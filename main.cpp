@@ -21,6 +21,7 @@ static float axisSize = 10.0;
 static float pointSize = 5.0;
 static const float resolution = 0.1;
 static int numPoints = int(1 / resolution) + 1;
+static int selectedRow = 0, selectedColumn = 0;
 
 
 static bool showCoordinateSystem = true;
@@ -83,10 +84,13 @@ void drawControlPoints(Point** controlPoints, int rows, int cols, float pointSiz
 			glVertex3f(controlPoints[i][j].x, controlPoints[i][j].y, controlPoints[i][j].z);
 		}
 	}
+	glColor3f(1.0, 0.0, 1.0);
+	glVertex3f(controlPoints[selectedRow][selectedColumn].x, controlPoints[selectedRow][selectedColumn].y, controlPoints[selectedRow][selectedColumn].z);
 	glEnd();
 }
 
 void drawControlMesh(Point** controlPoints, int rows, int cols) {
+	glColor3f(0.0, 0.0, 0.0);
 	for (int i = 0; i < rows; ++i) {
 		glBegin(GL_LINE_STRIP);
 		for (int j = 0; j < cols; ++j) {
@@ -385,9 +389,29 @@ void keyInput(unsigned char key, int x, int y)
 		angleZ += 5.0;
 		glutPostRedisplay();
 		break;
+	case 9:
+		if (selectedRow < rows) selectedRow++;
+		else selectedRow = 0;
+		glutPostRedisplay();
+		break;
+	case ' ':
+		if (selectedColumn < cols) selectedColumn++;
+		else selectedColumn = 0;
+		glutPostRedisplay();
 	default:
 		break;
 	}
+}
+
+void specialKeyInput(int key, int x, int y)
+{
+	if (key == GLUT_KEY_LEFT) controlPoints[selectedRow][selectedColumn].x -= 0.1;
+	if (key == GLUT_KEY_RIGHT) controlPoints[selectedRow][selectedColumn].x += 0.1;
+	if (key == GLUT_KEY_DOWN) controlPoints[selectedRow][selectedColumn].y -= 0.1;
+	if (key == GLUT_KEY_UP) controlPoints[selectedRow][selectedColumn].y += 0.1;
+	if (key == GLUT_KEY_PAGE_DOWN) controlPoints[selectedRow][selectedColumn].z -= 0.1;
+	if (key == GLUT_KEY_PAGE_UP) controlPoints[selectedRow][selectedColumn].z += 0.1;
+	glutPostRedisplay();
 }
 
 void printUserManual() {
@@ -400,6 +424,10 @@ void printUserManual() {
 	std::cout << "Press 'x'/'X' to rotate around 'X' axis." << std::endl;
 	std::cout << "Press 'y'/'Y' to rotate around 'Y' axis." << std::endl;
 	std::cout << "Press 'c'/'C' to rotate around 'Z' axis." << std::endl;
+	std::cout << "Press space and tab to select a control point." << std::endl;
+	std::cout << "Press the right/left arrow keys to move the control point up/down the x-axis." << std::endl;
+	std::cout << "Press the up/down arrow keys to move the control point up/down the y-axis." << std::endl;
+	std::cout << "Press the page up/down keys to move the control point up/down the z-axis." << std::endl;
 }
 
 // Main routine.
@@ -439,6 +467,7 @@ int main(int argc, char** argv)
 	glutDisplayFunc(drawScene);
 	glutReshapeFunc(resize);
 	glutKeyboardFunc(keyInput);
+	glutSpecialFunc(specialKeyInput);
 
 	glewExperimental = GL_TRUE;
 	glewInit();
