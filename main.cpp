@@ -23,7 +23,6 @@ static const float resolution = 0.1;
 static int numPoints = int(1 / resolution) + 1;
 static int selectedRow = 0, selectedColumn = 0;
 
-
 static bool showCoordinateSystem = true;
 static bool showControlPoints = true;
 static bool showControlHull = true;
@@ -35,6 +34,12 @@ static float angleY, angleX, angleZ = 0.0;
 
 static float knot_u[7] = { 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0 };
 static float knot_v[8] = { 0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0 };
+
+static GLfloat material_black[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+static GLfloat material_pink[] = { 1.0f, 0.0f, 1.0f, 1.0f };
+static GLfloat material_red[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+static GLfloat material_green[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+static GLfloat material_blue[] = { 0.0f, 0.0f, 1.0f, 1.0f };
 
 Point** createPointMatrx(int rows, int cols) {
 	Point** matrix = new Point * [rows];
@@ -76,21 +81,27 @@ void printMatrix() {
 }
 
 void drawControlPoints(Point** controlPoints, int rows, int cols, float pointSize = 5.0) {
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	glPointSize(pointSize);
+
 	glBegin(GL_POINTS);
-	glColor3f(0.0, 0.0, 0.0);
 	for (int i = 0; i < rows; ++i) {
 		for (int j = 0; j < cols; ++j) {
 			glVertex3f(controlPoints[i][j].x, controlPoints[i][j].y, controlPoints[i][j].z);
 		}
 	}
-	glColor3f(1.0, 0.0, 1.0);
-	glVertex3f(controlPoints[selectedRow][selectedColumn].x, controlPoints[selectedRow][selectedColumn].y, controlPoints[selectedRow][selectedColumn].z);
+
+	// glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_pink);
+	// glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_pink);
+	// glVertex3f(controlPoints[selectedRow][selectedColumn].x, controlPoints[selectedRow][selectedColumn].y, controlPoints[selectedRow][selectedColumn].z);
+	
 	glEnd();
 }
 
 void drawControlMesh(Point** controlPoints, int rows, int cols) {
-	glColor3f(0.0, 0.0, 0.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	for (int i = 0; i < rows; ++i) {
 		glBegin(GL_LINE_STRIP);
 		for (int j = 0; j < cols; ++j) {
@@ -106,6 +117,53 @@ void drawControlMesh(Point** controlPoints, int rows, int cols) {
 		}
 		glEnd();
 	}
+}
+
+Point calculateNormal(Point** bezierPoints, int i, int j, int rows, int cols) {
+	Point normal = { 0.0f, 0.0f, 0.0f };
+
+	// Get neighboring points for tangent vectors
+	Point right = (j < cols - 1) ?
+		Point{
+			bezierPoints[i][j + 1].x - bezierPoints[i][j].x,
+			bezierPoints[i][j + 1].y - bezierPoints[i][j].y,
+			bezierPoints[i][j + 1].z - bezierPoints[i][j].z
+	} :
+		Point{
+			bezierPoints[i][j].x - bezierPoints[i][j - 1].x,
+			bezierPoints[i][j].y - bezierPoints[i][j - 1].y,
+			bezierPoints[i][j].z - bezierPoints[i][j - 1].z
+	};
+
+	Point down = (i < rows - 1) ?
+		Point{
+			bezierPoints[i + 1][j].x - bezierPoints[i][j].x,
+			bezierPoints[i + 1][j].y - bezierPoints[i][j].y,
+			bezierPoints[i + 1][j].z - bezierPoints[i][j].z
+	} :
+		Point{
+			bezierPoints[i][j].x - bezierPoints[i - 1][j].x,
+			bezierPoints[i][j].y - bezierPoints[i - 1][j].y,
+			bezierPoints[i][j].z - bezierPoints[i - 1][j].z
+	};
+
+	// Calculate cross product for normal
+	normal.x = right.y * down.z - right.z * down.y;
+	normal.y = right.z * down.x - right.x * down.z;
+	normal.z = right.x * down.y - right.y * down.x;
+
+	// Normalize the vector
+	float length = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+	if (length > 0) {
+		normal.x /= length;
+		normal.y /= length;
+		normal.z /= length;
+	}
+
+	normal.x *= -1;
+	normal.y *= -1;
+	normal.z *= -1;
+	return normal;
 }
 
 // -------------------------- Bezier ------------------------ //
@@ -152,20 +210,40 @@ void generateBezierSurface(Point** bezierPoints, int brows, int bcols, Point** c
 	}
 }
 
-void drawBezierSurfave(Point** bezierPoints, int rows, int cols, bool fill)
-{
+void drawBezierSurface(Point** bezierPoints, int rows, int cols, bool fill) {
 	if (fill) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+		GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+		GLfloat material_diffuse[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+		GLfloat material_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		GLfloat material_shininess[] = { 50.0f };
+
+		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, material_shininess);
 	}
 	else {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	}
 
-	glColor3f(0.0, 0.0, 0.0);
+	// Enable smooth shading
+	glShadeModel(GL_SMOOTH);
+
 	for (int i = 0; i < rows - 1; i++) {
 		glBegin(GL_TRIANGLE_STRIP);
 		for (int j = 0; j < cols; j++) {
+			// Calculate and set normal for the current vertex
+			Point normal1 = calculateNormal(bezierPoints, i, j, rows, cols);
+			glNormal3f(normal1.x, normal1.y, normal1.z);
 			glVertex3f(bezierPoints[i][j].x, bezierPoints[i][j].y, bezierPoints[i][j].z);
+
+			// Calculate and set normal for the next vertex
+			Point normal2 = calculateNormal(bezierPoints, i + 1, j, rows, cols);
+			glNormal3f(normal2.x, normal2.y, normal2.z);
 			glVertex3f(bezierPoints[i + 1][j].x, bezierPoints[i + 1][j].y, bezierPoints[i + 1][j].z);
 		}
 		glEnd();
@@ -251,16 +329,19 @@ void drawBSplineSurface() {
 // --------------------------- End of B-Spline ---------------------------- //
 
 void drawCoordinateSystem() {
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_red);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_red);
 	glBegin(GL_LINES);
-	glColor3f(1.0, 0.0, 0.0);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(axisSize, 0.0, 0.0);
 
-	glColor3f(0.0, 1.0, 0.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_blue);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_blue);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(0.0, axisSize, 0.0);
 
-	glColor3f(0.0, 0.0, 1.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_green);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_green);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(0.0, 0.0, axisSize);
 	glEnd();
@@ -270,7 +351,7 @@ void drawCoordinateSystem() {
 // Drawing routine.
 void drawScene(void)
 {
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glLoadIdentity();
 
 	glTranslatef(-2.0, -3.0, -20.0);
@@ -304,7 +385,7 @@ void drawScene(void)
 	}
 	if (showSplineSurface) {
 		generateBezierSurface(bezierPoints, numPoints, numPoints, controlPoints, rows, cols, resolution);
-		drawBezierSurfave(bezierPoints, numPoints, numPoints, fill);
+		drawBezierSurface(bezierPoints, numPoints, numPoints, fill);
 	}
 	if (showBSplineSurface)
 	{
@@ -315,10 +396,39 @@ void drawScene(void)
 	glFlush();
 }
 
+void setupLighting() {
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_NORMALIZE);
+
+	GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	GLfloat material_diffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+	GLfloat material_specular[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+	GLfloat material_shininess[] = { 25.0f };
+
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, material_shininess);
+
+
+	GLfloat light_position[] = { 0.0f, 10.0f, 5.0f, 0.0f };
+	GLfloat light_ambient[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+	GLfloat light_diffuse[] = { 0.6f, 0.6f, 0.6f, 1.0f };
+	GLfloat light_specular[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+
+	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
+}
+
 // Initialization routine.
 void setup(void)
 {
 	glClearColor(1.0, 1.0, 1.0, 0.0);
+	setupLighting();
 }
 
 // OpenGL window reshape routine.
@@ -457,7 +567,7 @@ int main(int argc, char** argv)
 	glutInitContextVersion(4, 3);
 	glutInitContextProfile(GLUT_COMPATIBILITY_PROFILE);
 
-	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA);
+	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA | GLUT_DEPTH);
 
 	glutInitWindowSize(500, 500);
 	glutInitWindowPosition(700, 100);
