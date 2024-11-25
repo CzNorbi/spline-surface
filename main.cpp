@@ -26,15 +26,34 @@ static int selectedRow = 0, selectedColumn = 0;
 
 static bool showCoordinateSystem = true;
 static bool showControlPoints = true;
-static bool showControlHull = true;
+static bool showControlHull = false;
 static bool showSplineSurface = true;
 static bool showBSplineSurface = false;
+static bool showNurbsSurface = false;
 static bool fill = false;
 
 static float angleY, angleX, angleZ = 0.0;
 
+// ---- B-Spline ---- //
 static float knot_u[7] = { 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0 };
 static float knot_v[8] = { 0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0 };
+
+// ---- NURBS ---- //
+
+const int numControlPointsU = rows;
+const int numControlPointsV = cols;
+
+float weights[4][5] = {
+	{1, 1, 1, 1, 1},
+	{1, 1, 1, 1, 1},
+	{1, 1, 1, 1, 1},
+	{1, 1, 1, 1, 1}
+};
+std::vector<float> knotVectorU = { 0, 0, 1, 1, 2, 2, 3}; 
+std::vector<float> knotVectorV = { 0, 0, 1, 1, 2, 2, 3, 3};
+
+const int degreeU = 2;
+const int degreeV = 2;
 
 Point** createPointMatrx(int rows, int cols) {
 	Point** matrix = new Point * [rows];
@@ -78,7 +97,7 @@ void printMatrix() {
 void drawControlPoints(Point** controlPoints, int rows, int cols, float pointSize = 5.0) {
 	glPointSize(pointSize);
 	glBegin(GL_POINTS);
-	glColor3f(0.0, 0.0, 0.0);
+	glColor3f(0.0, 0.0, 1.0);
 	for (int i = 0; i < rows; ++i) {
 		for (int j = 0; j < cols; ++j) {
 			glVertex3f(controlPoints[i][j].x, controlPoints[i][j].y, controlPoints[i][j].z);
@@ -90,7 +109,7 @@ void drawControlPoints(Point** controlPoints, int rows, int cols, float pointSiz
 }
 
 void drawControlMesh(Point** controlPoints, int rows, int cols) {
-	glColor3f(0.0, 0.0, 0.0);
+	glColor3f(1.0, 0.0, 0.0);
 	for (int i = 0; i < rows; ++i) {
 		glBegin(GL_LINE_STRIP);
 		for (int j = 0; j < cols; ++j) {
@@ -219,6 +238,7 @@ void drawBSplineSurface() {
 	Point nextPoint;
 	int num_samples = 10; // Number of samples along u and v directions
 
+	glColor3f(0.0, 0.0, 0.0);
 	// Wireframe along the u direction (rows)
 	for (int j = 0; j <= num_samples; ++j) {
 		v = (float)j / num_samples;
@@ -249,6 +269,79 @@ void drawBSplineSurface() {
 }
 
 // --------------------------- End of B-Spline ---------------------------- //
+
+
+// ---------------------------- NURBS ------------------------------------ //
+
+// Helper function to calculate the basis function
+float N(int i, int p, float u, const std::vector<float>& knotVector) {
+	if (p == 0) {
+		return (knotVector[i] <= u && u < knotVector[i + 1]) ? 1.0f : 0.0f;
+	}
+	float left = 0.0f;
+	float right = 0.0f;
+
+	if (knotVector[i + p] - knotVector[i] != 0) {
+		left = ((u - knotVector[i]) / (knotVector[i + p] - knotVector[i])) * N(i, p - 1, u, knotVector);
+	}
+	if (knotVector[i + p + 1] - knotVector[i + 1] != 0) {
+		right = ((knotVector[i + p + 1] - u) / (knotVector[i + p + 1] - knotVector[i + 1])) * N(i + 1, p - 1, u, knotVector);
+	}
+	return left + right;
+}
+
+// Function to compute a point on the NURBS surface
+void computeSurfacePoint(float u, float v, float& x, float& y, float& z) {
+	x = y = z = 0.0f;
+	float wSum = 0.0f;
+
+	for (int i = 0; i < numControlPointsU; i++) {
+		for (int j = 0; j < numControlPointsV; j++) {
+			float Nu = N(i, degreeU, u, knotVectorU);
+			float Nv = N(j, degreeV, v, knotVectorV);
+			float weight = weights[i][j] * Nu * Nv;
+
+			x += weight * controlPoints[i][j].x;
+			y += weight * controlPoints[i][j].y;
+			z += weight * controlPoints[i][j].z;
+			wSum += weight;
+		}
+	}
+
+	x /= wSum;
+	y /= wSum;
+	z /= wSum;
+}
+
+void drawNurbsSurface() {
+
+	glColor3f(0.0, 1.0, 0.0);
+	glPointSize(3.0);
+
+	// Wireframe along the v direction (columns)
+	glBegin(GL_LINE_STRIP);
+	for (float u = knotVectorU.front(); u <= knotVectorU.back(); u += 0.1f) {
+		for (float v = knotVectorV.front(); v <= knotVectorV.back(); v += 0.1f) {
+			float x, y, z;
+			computeSurfacePoint(u, v, x, y, z);
+			glVertex3f(x, y, z);
+		}
+	}
+	glEnd();
+
+	// Wireframe along the u direction (rows)
+	glBegin(GL_LINE_STRIP);
+	for (float v = knotVectorV.front(); v <= knotVectorV.back(); v += 0.1f) {
+		for (float u = knotVectorU.front(); u <= knotVectorU.back(); u += 0.1f) {
+			float x, y, z;
+			computeSurfacePoint(u, v, x, y, z);
+			glVertex3f(x, y, z);
+		}
+	}
+	glEnd();
+}
+
+// ---------------------------- End of NURBS ---------------------------- //
 
 void drawCoordinateSystem() {
 	glBegin(GL_LINES);
@@ -310,6 +403,10 @@ void drawScene(void)
 	{
 		drawBSplineSurface();
 	}
+	if (showNurbsSurface)
+	{
+		drawNurbsSurface();
+	}
 	glPopMatrix();
 
 	glFlush();
@@ -329,6 +426,9 @@ void resize(int w, int h)
 	glLoadIdentity();
 	gluPerspective(60.0, (float)w / (float)h, 1.0, 50.0);
 	glMatrixMode(GL_MODELVIEW);
+
+	glLoadIdentity();
+	gluLookAt(0.0, 0.0, 6.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 }
 
 // Keyboard input processing routine.
@@ -353,12 +453,20 @@ void keyInput(unsigned char key, int x, int y)
 		break;
 	case '3':
 		showBSplineSurface = false;
+		showNurbsSurface = false;
 		showSplineSurface = !showSplineSurface;
 		glutPostRedisplay();
 		break;
 	case '4':
 		showSplineSurface = false;
+		showNurbsSurface = false;
 		showBSplineSurface = !showBSplineSurface;
+		glutPostRedisplay();
+		break;
+	case '5':
+		showSplineSurface = false;
+		showBSplineSurface = false;
+		showNurbsSurface = !showNurbsSurface;
 		glutPostRedisplay();
 		break;
 	case 'f':
@@ -417,13 +525,14 @@ void specialKeyInput(int key, int x, int y)
 void printUserManual() {
 	std::cout << "Press '0' to hide/show coordinate system." << std::endl;
 	std::cout << "Press '1' to hide/show control points." << std::endl;
-	std::cout << "Press '2' to hide/show control hull." << std::endl;
+	std::cout << "Press '2' to hide/show control hull.\n" << std::endl;
 	std::cout << "Press '3' to hide/show Bezier surface." << std::endl;
 	std::cout << "Press '4' to hide/show B-spline surface." << std::endl;
-	std::cout << "Press 'f' to switch between wired and filled surface." << std::endl;
+	std::cout << "Press '5' to hide/show NURBS surface.\n" << std::endl;
+	std::cout << "Press 'f' to switch between wired and filled surface.\n" << std::endl;
 	std::cout << "Press 'x'/'X' to rotate around 'X' axis." << std::endl;
 	std::cout << "Press 'y'/'Y' to rotate around 'Y' axis." << std::endl;
-	std::cout << "Press 'c'/'C' to rotate around 'Z' axis." << std::endl;
+	std::cout << "Press 'c'/'C' to rotate around 'Z' axis.\n" << std::endl;
 	std::cout << "Press space and tab to select a control point." << std::endl;
 	std::cout << "Press the right/left arrow keys to move the control point up/down the x-axis." << std::endl;
 	std::cout << "Press the up/down arrow keys to move the control point up/down the y-axis." << std::endl;
