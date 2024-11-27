@@ -33,8 +33,69 @@ static bool fill = false;
 
 static float angleY, angleX, angleZ = 0.0;
 
-static float knot_u[7] = { 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0 };
-static float knot_v[8] = { 0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0 };
+//static float knot_u[7] = { 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0 };
+//static float knot_v[8] = { 0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0 };
+
+static int uLength, vLength;
+
+float* knot_u = nullptr;
+float* knot_v = nullptr;
+
+void initiateKnotVector(float* knotVectorU, int ulength, float numberOfControlPointsU) {
+	if (ulength < 3) {
+		std::cerr << "Error: Knot vector length too small!" << std::endl;
+		return;
+	}
+	
+	for (int i = 0; i < ulength; i++) {
+		knotVectorU[i] = 0.0;
+	}
+
+	for (int i = ulength - 3; i < ulength; i++) {
+		knotVectorU[i] = 1.0;
+	}
+
+	bool still = true;
+	int j = 3, index = 1;
+	while (still) {
+		if (knotVectorU[j] == 1.0) {
+			still = false;
+		}
+		else {
+			knotVectorU[j] = floorf((index / (float)(numberOfControlPointsU - 2)) * 100) / 100;
+			j++;
+			index++;
+		}
+	}
+
+	/*for (int i = 0; i < length; i++) {
+		cout << i + 1 << ". value is " << knotVector[i] << "\n";
+	}*/
+}
+
+void initiateKnotVectorV(float* knotVector, int length, float numberOfControlPoints) {
+	for (int i = 0; i < length; i++) {
+		knotVector[i] = 0.0;
+	}
+
+	for (int i = length - 3; i < length; i++) {
+		knotVector[i] = 1.0;
+	}
+
+	bool still = true;
+	int j = 3, index = 1;
+	while (still) {
+		if (knotVector[j] == 1.0) {
+			still = false;
+		}
+		else {
+			knotVector[j] = floorf((index / (numberOfControlPoints - 2)) * 100) / 100;
+			j++;
+			index++;
+		}
+	}
+
+}
 
 Point** createPointMatrx(int rows, int cols) {
 	Point** matrix = new Point * [rows];
@@ -443,12 +504,22 @@ int main(int argc, char** argv)
 
 	if (rows < 3 || rows > 10 || cols < 3 || cols > 10) {
 		std::cerr << "Invalid input arguments. The number of rows and columns must be in the [3, 10] range."<< std::endl;
+		return 1;
 	}
 
 	controlPoints = createPointMatrx(rows, cols);
 	initialieControlPoints(controlPoints, rows, cols);
 	// printMatrix();
 	bezierPoints = createPointMatrx(numPoints, numPoints);
+	
+	uLength = rows + 2 + 1; // controlPoint + degree + 1
+	vLength = cols + 2 + 1; // same
+
+	knot_u = new float[uLength];
+	knot_v = new float[vLength];
+
+	initiateKnotVector(knot_u, uLength, rows);
+	initiateKnotVector(knot_v, vLength, cols);
 
 	printUserManual();
 
