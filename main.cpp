@@ -29,17 +29,18 @@ static bool showControlPoints = true;
 static bool showControlHull = true;
 static bool showSplineSurface = true;
 static bool showBSplineSurface = false;
+static bool showNurbsSurface = false;
 static bool fill = false;
 
 static float angleY, angleX, angleZ = 0.0;
 
-//static float knot_u[7] = { 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0 };
-//static float knot_v[8] = { 0.0, 0.0, 0.0, 0.33, 0.66, 1.0, 1.0, 1.0 };
-
+// ---- B-Spline ---- //
 static int uLength, vLength;
 
 float* knot_u = nullptr;
 float* knot_v = nullptr;
+
+// ---------------- //
 
 void initiateKnotVector(float* knotVectorU, int ulength, float numberOfControlPointsU) {
 	if (ulength < 3) {
@@ -67,34 +68,6 @@ void initiateKnotVector(float* knotVectorU, int ulength, float numberOfControlPo
 			index++;
 		}
 	}
-
-	/*for (int i = 0; i < length; i++) {
-		cout << i + 1 << ". value is " << knotVector[i] << "\n";
-	}*/
-}
-
-void initiateKnotVectorV(float* knotVector, int length, float numberOfControlPoints) {
-	for (int i = 0; i < length; i++) {
-		knotVector[i] = 0.0;
-	}
-
-	for (int i = length - 3; i < length; i++) {
-		knotVector[i] = 1.0;
-	}
-
-	bool still = true;
-	int j = 3, index = 1;
-	while (still) {
-		if (knotVector[j] == 1.0) {
-			still = false;
-		}
-		else {
-			knotVector[j] = floorf((index / (numberOfControlPoints - 2)) * 100) / 100;
-			j++;
-			index++;
-		}
-	}
-
 }
 
 Point** createPointMatrx(int rows, int cols) {
@@ -311,6 +284,146 @@ void drawBSplineSurface() {
 
 // --------------------------- End of B-Spline ---------------------------- //
 
+
+// -------------------------- NURBS ------------------------------------ //
+
+int numControlPointsU = 0;
+int numControlPointsV = 0;
+
+std::vector<float> knotVectorU;
+std::vector<float> knotVectorV;
+
+const int degreeU = 2;
+const int degreeV = 2;
+
+float** weights = nullptr;
+
+// Function to dynamically allocate a 2D array of weights
+float** createWeights(int numControlPointsU, int numControlPointsV, float initialValue = 1.0f) {
+	// Allocate an array of pointers for the rows
+	float** weights = new float* [numControlPointsU];
+
+	// Allocate each row and initialize values
+	for (int i = 0; i < numControlPointsU; ++i) {
+		weights[i] = new float[numControlPointsV];
+		for (int j = 0; j < numControlPointsV; ++j) {
+			weights[i][j] = initialValue; // Initialize with the given initial value
+		}
+	}
+
+	return weights;
+}
+
+void deleteWeights() {
+	if (weights != nullptr) {
+		for (int i = 0; i < numControlPointsU; ++i) {
+			delete[] weights[i];
+		}
+		delete[] weights;
+		weights = nullptr;
+		std::cout << "Weights array deallocated.\n";
+	}
+}
+
+std::vector<float> generateUniformKnotVector(int numControlPoints, int degree) {
+	int numKnots = numControlPoints + degree + 1;
+	std::vector<float> knotVector(numKnots);
+
+	for (int i = 0; i < numKnots; ++i) {
+		if (i < degree) {
+			knotVector[i] = 0.0f;
+		}
+		else if (i > numKnots - degree - 1) {
+			knotVector[i] = 1.0f;
+		}
+		else {
+			knotVector[i] = float(i - degree) / (numKnots - 2 * degree - 1);
+		}
+	}
+
+	return knotVector;
+}
+
+// Helper function to calculate the basis function
+float N(int i, int p, float u, const std::vector<float>& knotVector) {
+	if (p == 0) {
+		return (knotVector[i] <= u && u < knotVector[i + 1]) ? 1.0f : 0.0f;
+	}
+	float left = 0.0f;
+	float right = 0.0f;
+
+	if (knotVector[i + p] - knotVector[i] != 0) {
+		left = ((u - knotVector[i]) / (knotVector[i + p] - knotVector[i])) * N(i, p - 1, u, knotVector);
+	}
+	if (knotVector[i + p + 1] - knotVector[i + 1] != 0) {
+		right = ((knotVector[i + p + 1] - u) / (knotVector[i + p + 1] - knotVector[i + 1])) * N(i + 1, p - 1, u, knotVector);
+	}
+	return left + right;
+}
+
+// Function to compute a point on the NURBS surface
+void computeSurfacePoint(float u, float v, float& x, float& y, float& z) {
+	x = y = z = 0.0f;
+	float wSum = 0.0f;
+
+	for (int i = 0; i < numControlPointsU; i++) {
+		for (int j = 0; j < numControlPointsV; j++) {
+			float Nu = N(i, degreeU, u, knotVectorU);
+			float Nv = N(j, degreeV, v, knotVectorV);
+			float weight = weights[i][j] * Nu * Nv;
+
+			x += weight * controlPoints[i][j].x;
+			y += weight * controlPoints[i][j].y;
+			z += weight * controlPoints[i][j].z;
+			wSum += weight;
+		}
+	}
+
+	x /= wSum;
+	y /= wSum;
+	z /= wSum;
+}
+
+void drawNurbsSurface() {
+	glColor3f(0.0, 1.0, 0.0);
+	glPointSize(3.0);
+
+	float resolution = 0.0999f;
+	float uMin = knotVectorU[degreeU];
+	float uMax = knotVectorU[knotVectorU.size() - degreeU - 1];
+	float vMin = knotVectorV[degreeV];
+	float vMax = knotVectorV[knotVectorV.size() - degreeV - 1];
+
+	// Draw u-direction lines
+	for (float v = vMin; v <= vMax; v += resolution) {
+		glBegin(GL_LINE_STRIP);
+		for (float u = uMin; u <= uMax; u += resolution) {
+			float x, y, z;
+			computeSurfacePoint(u, v, x, y, z);
+			glVertex3f(x, y, z);
+		}
+		glEnd();
+	}
+
+	// Draw v-direction lines
+	for (float u = uMin; u <= uMax; u += resolution) {
+		glBegin(GL_LINE_STRIP);
+		for (float v = vMin; v <= vMax; v += resolution) {
+			float x, y, z;
+			computeSurfacePoint(u, v, x, y, z);
+			glVertex3f(x, y, z);
+		}
+		glEnd();
+	}
+}
+
+// --------------------------- End of NURBS ---------------------------- //
+
+// Register cleanup function to be called on program exit
+void registerCleanup() {
+	atexit(deleteWeights);
+}
+
 void drawCoordinateSystem() {
 	glBegin(GL_LINES);
 	glColor3f(1.0, 0.0, 0.0);
@@ -371,6 +484,10 @@ void drawScene(void)
 	{
 		drawBSplineSurface();
 	}
+	if (showNurbsSurface)
+	{
+		drawNurbsSurface();
+	}
 	glPopMatrix();
 
 	glFlush();
@@ -414,12 +531,20 @@ void keyInput(unsigned char key, int x, int y)
 		break;
 	case '3':
 		showBSplineSurface = false;
+		showNurbsSurface = false;
 		showSplineSurface = !showSplineSurface;
 		glutPostRedisplay();
 		break;
 	case '4':
 		showSplineSurface = false;
+		showNurbsSurface = false;
 		showBSplineSurface = !showBSplineSurface;
+		glutPostRedisplay();
+		break;
+	case '5':
+		showBSplineSurface = false;
+		showSplineSurface = false;
+		showNurbsSurface = !showNurbsSurface;
 		glutPostRedisplay();
 		break;
 	case 'f':
@@ -520,6 +645,16 @@ int main(int argc, char** argv)
 
 	initiateKnotVector(knot_u, uLength, rows);
 	initiateKnotVector(knot_v, vLength, cols);
+
+	numControlPointsU = rows;
+	numControlPointsV = cols;
+
+	knotVectorU = generateUniformKnotVector(numControlPointsU, degreeU);
+	knotVectorV = generateUniformKnotVector(numControlPointsV, degreeV);
+
+	
+	registerCleanup();
+	weights = createWeights(rows, cols);
 
 	printUserManual();
 
