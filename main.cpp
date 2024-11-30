@@ -746,6 +746,17 @@ void keyInput(unsigned char key, int x, int y)
 		break;
 	case 'r':
 		initialieControlPoints(controlPoints, rows, cols);
+		deleteWeights();
+		weights = createWeights(rows, cols);
+		std::cout << "Control points and weights reseted." << std::endl;
+		glutPostRedisplay();
+		break;
+	case 'i':
+		weights[selectedRow][selectedColumn] += 0.01;
+		glutPostRedisplay();
+		break;
+	case 'k':
+		weights[selectedRow][selectedColumn] -= 0.01;
 		glutPostRedisplay();
 		break;
 	case 9:
@@ -784,7 +795,7 @@ void printUserManual() {
 	std::cout << "Press 'x'/'X' to rotate around 'X' axis." << std::endl;
 	std::cout << "Press 'y'/'Y' to rotate around 'Y' axis." << std::endl;
 	std::cout << "Press 'c'/'C' to rotate around 'Z' axis." << std::endl;
-	std::cout << "Press 'r' to reset control points." << std::endl;
+	std::cout << "Press 'r' to reset control points and weights." << std::endl;
 	std::cout << "Press space and tab to select a control point." << std::endl;
 	std::cout << "Press the right/left arrow keys to move the control point up/down the x-axis." << std::endl;
 	std::cout << "Press the up/down arrow keys to move the control point up/down the y-axis." << std::endl;
