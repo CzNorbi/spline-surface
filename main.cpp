@@ -33,6 +33,12 @@ static bool showBSplineSurface = false;
 static bool showNurbsSurface = false;
 static bool fill = false;
 
+static GLfloat material_black[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+static GLfloat material_pink[] = { 1.0f, 0.0f, 1.0f, 1.0f };
+static GLfloat material_red[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+static GLfloat material_green[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+static GLfloat material_blue[] = { 0.0f, 0.0f, 1.0f, 1.0f };
+
 static float angleY, angleX, angleZ = 0.0;
 
 // ---- B-Spline ---- //
@@ -111,21 +117,29 @@ void printMatrix() {
 }
 
 void drawControlPoints(Point** controlPoints, int rows, int cols, float pointSize = 5.0) {
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	glPointSize(pointSize);
+
 	glBegin(GL_POINTS);
-	glColor3f(0.0, 0.0, 0.0);
 	for (int i = 0; i < rows; ++i) {
 		for (int j = 0; j < cols; ++j) {
 			glVertex3f(controlPoints[i][j].x, controlPoints[i][j].y, controlPoints[i][j].z);
 		}
 	}
-	glColor3f(1.0, 0.0, 1.0);
+	glEnd();
+
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_pink);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_pink);
+
+	glBegin(GL_POINTS);
 	glVertex3f(controlPoints[selectedRow][selectedColumn].x, controlPoints[selectedRow][selectedColumn].y, controlPoints[selectedRow][selectedColumn].z);
 	glEnd();
 }
 
 void drawControlMesh(Point** controlPoints, int rows, int cols) {
-	glColor3f(0.0, 0.0, 0.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	for (int i = 0; i < rows; ++i) {
 		glBegin(GL_LINE_STRIP);
 		for (int j = 0; j < cols; ++j) {
@@ -143,20 +157,87 @@ void drawControlMesh(Point** controlPoints, int rows, int cols) {
 	}
 }
 
-void drawSplineSurface(Point** surfacePoints, int numSurfaceRows, int numSurfaceCols, bool fill)
-{
+Point calculateNormal(Point** surfacePoints, int i, int j, int rows, int cols) {
+	Point normal = { 0.0f, 0.0f, 0.0f };
+
+	// Get neighboring points for tangent vectors
+	Point right = (j < cols - 1) ?
+		Point{
+			surfacePoints[i][j + 1].x - surfacePoints[i][j].x,
+			surfacePoints[i][j + 1].y - surfacePoints[i][j].y,
+			surfacePoints[i][j + 1].z - surfacePoints[i][j].z
+	} :
+		Point{
+			surfacePoints[i][j].x - surfacePoints[i][j - 1].x,
+			surfacePoints[i][j].y - surfacePoints[i][j - 1].y,
+			surfacePoints[i][j].z - surfacePoints[i][j - 1].z
+	};
+
+	Point down = (i < rows - 1) ?
+		Point{
+			surfacePoints[i + 1][j].x - surfacePoints[i][j].x,
+			surfacePoints[i + 1][j].y - surfacePoints[i][j].y,
+			surfacePoints[i + 1][j].z - surfacePoints[i][j].z
+	} :
+		Point{
+			surfacePoints[i][j].x - surfacePoints[i - 1][j].x,
+			surfacePoints[i][j].y - surfacePoints[i - 1][j].y,
+			surfacePoints[i][j].z - surfacePoints[i - 1][j].z
+	};
+
+	// Calculate cross product for normal
+	normal.x = right.y * down.z - right.z * down.y;
+	normal.y = right.z * down.x - right.x * down.z;
+	normal.z = right.x * down.y - right.y * down.x;
+
+	// Normalize the vector
+	float length = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+	if (length > 0) {
+		normal.x /= length;
+		normal.y /= length;
+		normal.z /= length;
+	}
+
+	normal.x *= -1;
+	normal.y *= -1;
+	normal.z *= -1;
+	return normal;
+}
+
+void drawSplineSurface(Point** surfacePoints, int rows, int cols, bool fill) {
 	if (fill) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+		GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+		GLfloat material_diffuse[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+		GLfloat material_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		GLfloat material_shininess[] = { 50.0f };
+
+		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, material_shininess);
 	}
 	else {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_black);
+		glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_black);
 	}
 
-	glColor3f(0.0, 0.0, 0.0);
-	for (int i = 0; i < numSurfaceRows - 1; i++) {
+	// Enable smooth shading
+	glShadeModel(GL_SMOOTH);
+
+	for (int i = 0; i < rows - 1; i++) {
 		glBegin(GL_TRIANGLE_STRIP);
-		for (int j = 0; j < numSurfaceCols; j++) {
+		for (int j = 0; j < cols; j++) {
+			// Calculate and set normal for the current vertex
+			Point normal1 = calculateNormal(surfacePoints, i, j, rows, cols);
+			glNormal3f(normal1.x, normal1.y, normal1.z);
 			glVertex3f(surfacePoints[i][j].x, surfacePoints[i][j].y, surfacePoints[i][j].z);
+
+			// Calculate and set normal for the next vertex
+			Point normal2 = calculateNormal(surfacePoints, i + 1, j, rows, cols);
+			glNormal3f(normal2.x, normal2.y, normal2.z);
 			glVertex3f(surfacePoints[i + 1][j].x, surfacePoints[i + 1][j].y, surfacePoints[i + 1][j].z);
 		}
 		glEnd();
@@ -478,16 +559,19 @@ void registerCleanup() {
 }
 
 void drawCoordinateSystem() {
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_red);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_red);
 	glBegin(GL_LINES);
-	glColor3f(1.0, 0.0, 0.0);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(axisSize, 0.0, 0.0);
 
-	glColor3f(0.0, 1.0, 0.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_blue);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_blue);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(0.0, axisSize, 0.0);
 
-	glColor3f(0.0, 0.0, 1.0);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, material_green);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_green);
 	glVertex3f(0.0, 0.0, 0.0);
 	glVertex3f(0.0, 0.0, axisSize);
 	glEnd();
@@ -497,7 +581,7 @@ void drawCoordinateSystem() {
 // Drawing routine.
 void drawScene(void)
 {
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glLoadIdentity();
 
 	glTranslatef(-2.0, -3.0, -20.0);
@@ -549,10 +633,39 @@ void drawScene(void)
 	glFlush();
 }
 
+void setupLighting() {
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_NORMALIZE);
+
+	GLfloat material_ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	GLfloat material_diffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+	GLfloat material_specular[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+	GLfloat material_shininess[] = { 25.0f };
+
+	glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular);
+	glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, material_shininess);
+
+
+	GLfloat light_position[] = { 0.0f, 10.0f, 5.0f, 0.0f };
+	GLfloat light_ambient[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+	GLfloat light_diffuse[] = { 0.6f, 0.6f, 0.6f, 1.0f };
+	GLfloat light_specular[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+
+	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
+}
+
 // Initialization routine.
 void setup(void)
 {
 	glClearColor(1.0, 1.0, 1.0, 0.0);
+	setupLighting();
 }
 
 // OpenGL window reshape routine.
@@ -631,6 +744,10 @@ void keyInput(unsigned char key, int x, int y)
 		angleZ += 5.0;
 		glutPostRedisplay();
 		break;
+	case 'r':
+		initialieControlPoints(controlPoints, rows, cols);
+		glutPostRedisplay();
+		break;
 	case 9:
 		if (selectedRow < rows) selectedRow++;
 		else selectedRow = 0;
@@ -667,6 +784,7 @@ void printUserManual() {
 	std::cout << "Press 'x'/'X' to rotate around 'X' axis." << std::endl;
 	std::cout << "Press 'y'/'Y' to rotate around 'Y' axis." << std::endl;
 	std::cout << "Press 'c'/'C' to rotate around 'Z' axis." << std::endl;
+	std::cout << "Press 'r' to reset control points." << std::endl;
 	std::cout << "Press space and tab to select a control point." << std::endl;
 	std::cout << "Press the right/left arrow keys to move the control point up/down the x-axis." << std::endl;
 	std::cout << "Press the up/down arrow keys to move the control point up/down the y-axis." << std::endl;
@@ -720,7 +838,7 @@ int main(int argc, char** argv)
 	glutInitContextVersion(4, 3);
 	glutInitContextProfile(GLUT_COMPATIBILITY_PROFILE);
 
-	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA);
+	glutInitDisplayMode(GLUT_SINGLE | GLUT_RGBA | GLUT_DEPTH);
 
 	glutInitWindowSize(500, 500);
 	glutInitWindowPosition(700, 100);
