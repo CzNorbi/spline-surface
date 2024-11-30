@@ -13,21 +13,22 @@ struct Point {
 };
 
 Point** controlPoints = nullptr;
-Point** bezierPoints = nullptr;
+Point** surfacePoints = nullptr;
 
 static int rows, cols;
 static float size = 8.0;
 static float axisSize = 10.0;
 static float pointSize = 5.0;
 static const float resolution = 0.1;
-static int numPoints = int(1 / resolution) + 1;
+static int numSurfaceRows = int(1 / resolution) + 1;
+static int numSurfaceCols = int(1 / resolution) + 1;
 static int selectedRow = 0, selectedColumn = 0;
 
 
 static bool showCoordinateSystem = true;
 static bool showControlPoints = true;
 static bool showControlHull = true;
-static bool showSplineSurface = true;
+static bool showBezierSurface = true;
 static bool showBSplineSurface = false;
 static bool showNurbsSurface = false;
 static bool fill = false;
@@ -142,6 +143,26 @@ void drawControlMesh(Point** controlPoints, int rows, int cols) {
 	}
 }
 
+void drawSplineSurface(Point** surfacePoints, int numSurfaceRows, int numSurfaceCols, bool fill)
+{
+	if (fill) {
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	}
+	else {
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	}
+
+	glColor3f(0.0, 0.0, 0.0);
+	for (int i = 0; i < numSurfaceRows - 1; i++) {
+		glBegin(GL_TRIANGLE_STRIP);
+		for (int j = 0; j < numSurfaceCols; j++) {
+			glVertex3f(surfacePoints[i][j].x, surfacePoints[i][j].y, surfacePoints[i][j].z);
+			glVertex3f(surfacePoints[i + 1][j].x, surfacePoints[i + 1][j].y, surfacePoints[i + 1][j].z);
+		}
+		glEnd();
+	}
+}
+
 // -------------------------- Bezier ------------------------ //
 
 long long factorial(int n) {
@@ -166,7 +187,7 @@ float bernstein(int n, int i, float t) {
 }
 
 
-void generateBezierSurface(Point** bezierPoints, int brows, int bcols, Point** controlPoints, int crows, int ccols, float resolution) {
+void generateBezierSurface(Point** surfacePoints, int numSurfaceRows, int numSurfaceCols, Point** controlPoints, int crows, int ccols, float resolution) {
 	for (float u = 0; u < 1 + resolution; u += resolution)
 	{
 		for (float v = 0; v < 1 + resolution; v += resolution)
@@ -181,28 +202,8 @@ void generateBezierSurface(Point** bezierPoints, int brows, int bcols, Point** c
 					nextPoint.z += B1 * B2 * controlPoints[i][j].z;
 				}
 			}
-			bezierPoints[int(u * (brows - 1))][int(v * (bcols - 1))] = Point{ nextPoint.x, nextPoint.y, nextPoint.z };
+			surfacePoints[int(u * (numSurfaceRows - 1))][int(v * (numSurfaceCols - 1))] = Point{ nextPoint.x, nextPoint.y, nextPoint.z };
 		}
-	}
-}
-
-void drawBezierSurfave(Point** bezierPoints, int rows, int cols, bool fill)
-{
-	if (fill) {
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-	}
-	else {
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	}
-
-	glColor3f(0.0, 0.0, 0.0);
-	for (int i = 0; i < rows - 1; i++) {
-		glBegin(GL_TRIANGLE_STRIP);
-		for (int j = 0; j < cols; j++) {
-			glVertex3f(bezierPoints[i][j].x, bezierPoints[i][j].y, bezierPoints[i][j].z);
-			glVertex3f(bezierPoints[i + 1][j].x, bezierPoints[i + 1][j].y, bezierPoints[i + 1][j].z);
-		}
-		glEnd();
 	}
 }
 
@@ -243,6 +244,17 @@ void computeBSplineSurface(float u, float v, int rows, int cols, Point& nextPoin
 			nextPoint.y += bu * bv * controlPoints[i][j].y;
 			nextPoint.z += bu * bv * controlPoints[i][j].z;
 
+		}
+	}
+}
+
+void generateBSplineSurfacePoints(Point**& surfacePoints, int& numSurfaceRows, int& numSurfaceCols) {
+
+	for (float u = 0; u < 1 + resolution; u += resolution) {
+		for (float v = 0; v < 1 + resolution; v += resolution) {
+			Point nextPoint = { 0.0f, 0.0f, 0.0f };
+			computeBSplineSurface(u, v, rows, cols, nextPoint);
+			surfacePoints[int(u * (numSurfaceRows - 1))][int(v * (numSurfaceCols - 1))] = nextPoint;
 		}
 	}
 }
@@ -417,11 +429,52 @@ void drawNurbsSurface() {
 	}
 }
 
+void generateNurbsSurfacePoints(Point**& surfacePoints, int& numSurfaceRows, int& numSurfaceCols) {
+	// Get parameter ranges
+	float uMin = knotVectorU[degreeU];
+	float uMax = knotVectorU[knotVectorU.size() - degreeU - 1];
+	float vMin = knotVectorV[degreeV];
+	float vMax = knotVectorV[knotVectorV.size() - degreeV - 1];
+
+	// Generate surface points
+	for (float u = uMin; u <= uMax; u += resolution) {
+		for (float v = vMin; v <= vMax; v += resolution) {
+			float x, y, z;
+			computeSurfacePoint(u, v, x, y, z);
+			Point nextPoint = { x, y, z };
+			surfacePoints[int((u - uMin) / (uMax - uMin) * (numSurfaceRows - 1))]
+				[int((v - vMin) / (vMax - vMin) * (numSurfaceCols - 1))] = nextPoint;
+		}
+	}
+}
+
 // --------------------------- End of NURBS ---------------------------- //
+
+void cleanupSurfacePoints() {
+	if (surfacePoints != nullptr) {
+		for (int i = 0; i < numSurfaceRows; ++i) {
+			delete[] surfacePoints[i];
+		}
+		delete[] surfacePoints;
+		surfacePoints = nullptr;
+	}
+}
+
+void cleanupControlPoints() {
+	if (controlPoints != nullptr) {
+		for (int i = 0; i < rows; ++i) {
+			delete[] controlPoints[i];
+		}
+		delete[] controlPoints;
+		controlPoints = nullptr;
+	}
+}
 
 // Register cleanup function to be called on program exit
 void registerCleanup() {
 	atexit(deleteWeights);
+	atexit(cleanupControlPoints);
+	atexit(cleanupSurfacePoints);
 }
 
 void drawCoordinateSystem() {
@@ -470,23 +523,26 @@ void drawScene(void)
 	glRotatef(angleY, 0.0, 1.0, 0.0);
 	glRotatef(angleZ, 0.0, 0.0, 1.0);
 	glTranslatef(-size / 2, 0.0, -size / 2);
-	if (showControlPoints) {
-		drawControlPoints(controlPoints, rows, cols);
-	}
+
 	if (showControlHull) {
 		drawControlMesh(controlPoints, rows, cols);
 	}
-	if (showSplineSurface) {
-		generateBezierSurface(bezierPoints, numPoints, numPoints, controlPoints, rows, cols, resolution);
-		drawBezierSurfave(bezierPoints, numPoints, numPoints, fill);
+	if (showBezierSurface) {
+		generateBezierSurface(surfacePoints, numSurfaceRows, numSurfaceCols, controlPoints, rows, cols, resolution);
+		drawSplineSurface(surfacePoints, numSurfaceRows, numSurfaceCols, fill);
 	}
 	if (showBSplineSurface)
 	{
-		drawBSplineSurface();
+		generateBSplineSurfacePoints(surfacePoints, numSurfaceRows, numSurfaceCols);
+		drawSplineSurface(surfacePoints, numSurfaceRows, numSurfaceCols, fill);
 	}
 	if (showNurbsSurface)
 	{
-		drawNurbsSurface();
+		generateNurbsSurfacePoints(surfacePoints, numSurfaceRows, numSurfaceCols);
+		drawSplineSurface(surfacePoints, numSurfaceRows, numSurfaceCols, fill);
+	}
+	if (showControlPoints) {
+		drawControlPoints(controlPoints, rows, cols);
 	}
 	glPopMatrix();
 
@@ -532,18 +588,18 @@ void keyInput(unsigned char key, int x, int y)
 	case '3':
 		showBSplineSurface = false;
 		showNurbsSurface = false;
-		showSplineSurface = !showSplineSurface;
+		showBezierSurface = !showBezierSurface;
 		glutPostRedisplay();
 		break;
 	case '4':
-		showSplineSurface = false;
+		showBezierSurface = false;
 		showNurbsSurface = false;
 		showBSplineSurface = !showBSplineSurface;
 		glutPostRedisplay();
 		break;
 	case '5':
 		showBSplineSurface = false;
-		showSplineSurface = false;
+		showBezierSurface = false;
 		showNurbsSurface = !showNurbsSurface;
 		glutPostRedisplay();
 		break;
@@ -606,6 +662,7 @@ void printUserManual() {
 	std::cout << "Press '2' to hide/show control hull." << std::endl;
 	std::cout << "Press '3' to hide/show Bezier surface." << std::endl;
 	std::cout << "Press '4' to hide/show B-spline surface." << std::endl;
+	std::cout << "Press '5' to hide/show NURBS surface." << std::endl;
 	std::cout << "Press 'f' to switch between wired and filled surface." << std::endl;
 	std::cout << "Press 'x'/'X' to rotate around 'X' axis." << std::endl;
 	std::cout << "Press 'y'/'Y' to rotate around 'Y' axis." << std::endl;
@@ -635,7 +692,7 @@ int main(int argc, char** argv)
 	controlPoints = createPointMatrx(rows, cols);
 	initialieControlPoints(controlPoints, rows, cols);
 	// printMatrix();
-	bezierPoints = createPointMatrx(numPoints, numPoints);
+	surfacePoints = createPointMatrx(numSurfaceRows, numSurfaceCols);
 	
 	uLength = rows + 2 + 1; // controlPoint + degree + 1
 	vLength = cols + 2 + 1; // same
@@ -676,6 +733,7 @@ int main(int argc, char** argv)
 	glutSpecialFunc(specialKeyInput);
 
 	glewExperimental = GL_TRUE;
+	atexit(cleanupSurfacePoints);
 	glewInit();
 
 	setup();
