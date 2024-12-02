@@ -760,12 +760,12 @@ void keyInput(unsigned char key, int x, int y)
 		glutPostRedisplay();
 		break;
 	case 9:
-		if (selectedRow < rows) selectedRow++;
+		if (selectedRow < rows-1) selectedRow++;
 		else selectedRow = 0;
 		glutPostRedisplay();
 		break;
 	case ' ':
-		if (selectedColumn < cols) selectedColumn++;
+		if (selectedColumn < cols-1) selectedColumn++;
 		else selectedColumn = 0;
 		glutPostRedisplay();
 	default:
